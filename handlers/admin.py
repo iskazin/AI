@@ -302,7 +302,7 @@ async def adm_pending(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("adm_approve_"))
-async def adm_approve(callback: CallbackQuery):
+async def adm_approve(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         return await callback.answer()
 
@@ -310,28 +310,64 @@ async def adm_approve(callback: CallbackQuery):
     await approve_payment(payment_id)
     await callback.answer("✅ Платёж подтверждён", show_alert=True)
 
-    # Обновить список
+    # Получить данные платежа и пациента
+    from database.db import get_patient_card
+    async with __import__('aiosqlite').connect(os.getenv("DB_PATH", "neo_clinic.db")) as db:
+        db.row_factory = __import__('aiosqlite').Row
+        cursor = await db.execute("SELECT * FROM payments WHERE id = ?", (payment_id,))
+        payment = await cursor.fetchone()
+
+    if payment:
+        telegram_id = payment["telegram_id"]
+        data = await get_patient_card(telegram_id)
+        patient = data.get("patient", {})
+        consultations = data.get("consultations", [])
+        name = patient.get("full_name") or patient.get("username") or str(telegram_id)
+
+        # Отправить сводку пациента
+        if consultations:
+            c = consultations[0]
+            summary = (
+                f"📋 <b>Карточка пациента: {name}</b>\n\n"
+                f"<b>Жалобы:</b>\n{c.get('phase2_complaints') or '—'}\n\n"
+                f"<b>История:</b>\n{c.get('phase3_history') or '—'}\n\n"
+                f"<b>Доп. данные:</b>\n{c.get('phase4_followup') or '—'}"
+            )
+            if len(summary) > 4000:
+                summary = summary[:3900] + "\n\n<i>... текст обрезан</i>"
+
+            await callback.bot.send_message(
+                chat_id=callback.from_user.id,
+                text=summary,
+                parse_mode="HTML"
+            )
+
+        # Уведомить пациента
+        try:
+            builder = InlineKeyboardBuilder()
+            builder.button(text="📱 Канал доктора", url="https://t.me/dr_iskazin")
+            builder.button(text="🏠 В главное меню", callback_data="back_to_menu")
+            builder.adjust(1)
+            await callback.bot.send_message(
+                chat_id=telegram_id,
+                text=(
+                    "✅ Оплата подтверждена.\n\n"
+                    "Доктор Айбатыр Исказин свяжется с вами в ближайшее время "
+                    "для передачи персонального заключения."
+                ),
+                reply_markup=builder.as_markup()
+            )
+        except Exception:
+            pass
+
+    # Обновить список ожидающих
     payments = await get_pending_payments()
     if not payments:
         builder = InlineKeyboardBuilder()
         builder.button(text="← Назад", callback_data="adm_back")
-        await callback.message.edit_text(
-            "✅ Все платежи подтверждены.",
-            reply_markup=builder.as_markup()
-        )
+        await callback.message.edit_text("✅ Все платежи подтверждены.", reply_markup=builder.as_markup())
     else:
         await adm_pending(callback)
-
-
-@router.callback_query(F.data.startswith("adm_reject_"))
-async def adm_reject(callback: CallbackQuery):
-    if not is_admin(callback.from_user.id):
-        return await callback.answer()
-
-    payment_id = int(callback.data.split("_")[-1])
-    await reject_payment(payment_id)
-    await callback.answer("❌ Платёж отклонён", show_alert=True)
-    await adm_pending(callback)
 
 
 # ─── Возврат в меню ────────────────────────────────────────────────────────
