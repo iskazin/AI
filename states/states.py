@@ -5,6 +5,7 @@ class OnboardingStates(StatesGroup):
     phase2_complaints = State()
     phase3_history = State()
     phase4_followup = State()
+    phase5_docs = State()
     phase5_result = State()
 
 
