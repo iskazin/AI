@@ -6,9 +6,8 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from states.states import OnboardingStates, PaymentStates
-from database.db import create_consultation, update_consultation_phase, create_payment, attach_receipt
+from database.db import create_consultation, update_consultation_phase, create_payment, attach_receipt, save_document
 
 router = Router()
 
@@ -99,11 +98,8 @@ async def receive_document(message: Message, state: FSMContext):
     docs = data.get("docs", [])
     docs.append({"type": "document", "file_id": message.document.file_id, "name": message.document.file_name or "документ"})
     await state.update_data(docs=docs)
-    if ADMIN_ID:
-        user = message.from_user
-        await message.bot.send_document(chat_id=ADMIN_ID, document=message.document.file_id,
-            caption=f"📄 Документ от: {user.full_name or user.username}\n@{user.username or 'нет'}")
-    await message.answer(f"✅ Документ получен.\nМожете отправить ещё или нажмите «Всё загружено».", reply_markup=after_docs_kb())
+    await save_document(message.from_user.id, message.document.file_id, "document", message.document.file_name or "")
+    await message.answer("✅ Документ получен.\nМожете отправить ещё или нажмите «Всё загружено».", reply_markup=after_docs_kb())
 
 @router.message(OnboardingStates.phase5_docs, F.photo)
 async def receive_photo_doc(message: Message, state: FSMContext):
@@ -112,15 +108,11 @@ async def receive_photo_doc(message: Message, state: FSMContext):
     photo = message.photo[-1]
     docs.append({"type": "photo", "file_id": photo.file_id})
     await state.update_data(docs=docs)
-    if ADMIN_ID:
-        user = message.from_user
-        await message.bot.send_photo(chat_id=ADMIN_ID, photo=photo.file_id,
-            caption=f"🖼 Фото от: {user.full_name or user.username}\n@{user.username or 'нет'}")
+    await save_document(message.from_user.id, photo.file_id, "photo")
     await message.answer("✅ Фото получено.\nМожете отправить ещё или нажмите «Всё загружено».", reply_markup=after_docs_kb())
 
 @router.callback_query(F.data == "docs_done")
 async def docs_done(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
     payment_id = await create_payment(telegram_id=callback.from_user.id, amount=CONSULTATION_PRICE,
         product_type="consultation", product_name="Онлайн-консультация")
     await state.update_data(payment_id=payment_id)
