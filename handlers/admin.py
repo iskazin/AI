@@ -340,6 +340,29 @@ async def adm_approve(callback: CallbackQuery, state: FSMContext):
             await callback.bot.send_message(
                 chat_id=callback.from_user.id,
                 text=summary,
+                # Переслать все документы пациента
+        from database.db import get_patient_documents
+        docs = await get_patient_documents(telegram_id)
+        if docs:
+            await callback.bot.send_message(
+                chat_id=callback.from_user.id,
+                text=f"📎 Документы пациента ({len(docs)} шт.):"
+            )
+            for doc in docs:
+                try:
+                    if doc["file_type"] == "photo":
+                        await callback.bot.send_photo(
+                            chat_id=callback.from_user.id,
+                            photo=doc["file_id"]
+                        )
+                    else:
+                        await callback.bot.send_document(
+                            chat_id=callback.from_user.id,
+                            document=doc["file_id"],
+                            caption=doc.get("file_name", "документ")
+                        )
+                except Exception:
+                    pass
                 parse_mode="HTML"
             )
 
