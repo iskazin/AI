@@ -6,6 +6,7 @@ import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.db import (
@@ -52,8 +53,8 @@ async def cmd_admin(message: Message):
 
 # ─── Статистика ────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "adm_stats")
-async def adm_stats(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("adm_approve_"))
+async def adm_approve(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         return await callback.answer("Доступ закрыт.")
 
