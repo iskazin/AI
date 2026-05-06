@@ -270,3 +270,36 @@ async def get_stats() -> dict:
             "total_revenue": total_revenue,
             "new_this_week": new_this_week
         }
+async def save_document(telegram_id: int, file_id: str, file_type: str, file_name: str = ""):
+    """Сохранить документ пациента"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS patient_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                file_id TEXT NOT NULL,
+                file_type TEXT DEFAULT 'photo',
+                file_name TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        await db.execute(
+            "INSERT INTO patient_documents (telegram_id, file_id, file_type, file_name) VALUES (?, ?, ?, ?)",
+            (telegram_id, file_id, file_type, file_name)
+        )
+        await db.commit()
+
+
+async def get_patient_documents(telegram_id: int) -> list:
+    """Получить все документы пациента"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        try:
+            cursor = await db.execute(
+                "SELECT * FROM patient_documents WHERE telegram_id = ? ORDER BY created_at DESC",
+                (telegram_id,)
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
